@@ -150,3 +150,50 @@ class MLP:
 
         return self.history
 
+    def gradient_check(self, X, y, eps=1e-5, sample_size=5):
+        """
+        Numerical gradient check on a small batch.
+        Returns max relative difference between analytical and numerical grads.
+        """
+        n_classes = self.layer_sizes[-1]
+        X_small = X[:sample_size]
+        y_small = y[:sample_size]
+        y_oh = self._one_hot(y_small, n_classes)
+
+        y_pred, cache = self.forward(X_small)
+        grads_analytical = self.backward(y_pred, y_oh, cache)
+
+        max_diff = 0.0
+        for key in self.params:
+            param = self.params[key]
+            grad_key = "d" + key
+            grad_analytical = grads_analytical[grad_key]
+
+            # Only check a few elements to keep runtime low
+            it = np.nditer(param, flags=["multi_index"])
+            checked = 0
+            while not it.finished and checked < 20:
+                idx = it.multi_index
+                orig = param[idx]
+
+                param[idx] = orig + eps
+                y_plus, _ = self.forward(X_small)
+                loss_plus = cross_entropy(y_plus, y_oh)
+
+                param[idx] = orig - eps
+                y_minus, _ = self.forward(X_small)
+                loss_minus = cross_entropy(y_minus, y_oh)
+
+                param[idx] = orig  # restore
+
+                grad_num = (loss_plus - loss_minus) / (2 * eps)
+                grad_ana = grad_analytical[idx]
+
+                denom = max(abs(grad_num) + abs(grad_ana), 1e-8)
+                diff = abs(grad_num - grad_ana) / denom
+                max_diff = max(max_diff, diff)
+
+                it.iternext()
+                checked += 1
+
+        return max_diff
